@@ -4,6 +4,7 @@
 use crate::{Hex, HEX_SIZE};
 use anyhow::{Context, Result};
 use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Index, Range, RangeFrom, RangeFull, RangeTo};
 use std::str::FromStr;
 
 impl Debug for Hex {
@@ -432,6 +433,40 @@ impl FromStr for Hex {
     }
 }
 
+impl Index<RangeFrom<usize>> for Hex {
+    type Output = Hex;
+
+    fn index(&self, range: RangeFrom<usize>) -> &Self::Output {
+        Box::leak(Box::new(self.tail(range.start)))
+    }
+}
+
+impl Index<Range<usize>> for Hex {
+    type Output = Hex;
+
+    fn index(&self, range: Range<usize>) -> &Self::Output {
+        let bytes = &self.bytes()[range];
+        Box::leak(Box::new(Self::from_slice(bytes)))
+    }
+}
+
+impl Index<RangeTo<usize>> for Hex {
+    type Output = Hex;
+
+    fn index(&self, range: RangeTo<usize>) -> &Self::Output {
+        let bytes = &self.bytes()[range];
+        Box::leak(Box::new(Self::from_slice(bytes)))
+    }
+}
+
+impl Index<RangeFull> for Hex {
+    type Output = Hex;
+
+    fn index(&self, _: RangeFull) -> &Self::Output {
+        Box::leak(Box::new(Self::from_slice(self.bytes())))
+    }
+}
+
 #[test]
 fn simple_int() {
     let i = 42;
@@ -603,4 +638,36 @@ fn concatenates_from_hex_str() {
     let c = Hex::from_str_bytes("Пока!");
     let res = a.concat(&b).concat(&c);
     assert_eq!(24, res.len());
+}
+
+#[test]
+fn slicing_tests() {
+    // Test RangeFrom slicing - the primary use case from the requirement
+    let a = Hex::from_str_bytes("Hello, world!");
+    let b = &a[5..];
+    assert_eq!(", world!", b.to_utf8().unwrap());
+
+    // Test Range slicing
+    let hex = Hex::from_str_bytes("Hello, world!");
+    let slice = &hex[7..12];
+    assert_eq!("world", slice.to_utf8().unwrap());
+
+    // Test RangeTo slicing
+    let slice = &hex[..5];
+    assert_eq!("Hello", slice.to_utf8().unwrap());
+
+    // Test RangeFull slicing
+    let slice = &hex[..];
+    assert_eq!("Hello, world!", slice.to_utf8().unwrap());
+
+    // Test with binary data
+    let hex = Hex::from_vec(vec![0x01, 0x02, 0x03, 0x04, 0x05]);
+    let slice = &hex[2..];
+    assert_eq!(vec![0x03, 0x04, 0x05], slice.to_vec());
+
+    // Test nested slicing
+    let hex = Hex::from_str_bytes("Hello, world!");
+    let slice1 = &hex[0..5];
+    let slice2 = &slice1[0..4];
+    assert_eq!("Hell", slice2.to_utf8().unwrap());
 }
